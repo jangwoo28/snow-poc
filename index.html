@@ -1,7 +1,7 @@
 <!DOCTYPE html>
   <html>
   <head><title>Token</title><meta charset="utf-8"></head>
-  <body style="background:#000;color:#0f0;font:14px monospace;padding:10px">
+  <body style="background:#000;color:#0f0;font:11px monospace;padding:10px">
   <pre id="s">Loading...</pre>
   <script>
   var B = window.B612KajiBridgeInterface;
@@ -13,30 +13,22 @@
       window.c1 = function(d) {
           var x = typeof d === 'string' ? JSON.parse(d) : d;
 
-          s.textContent += '=== SESSION KEY ===\n';
+          s.textContent += '=== SESSION KEY (URL encoded) ===\n';
           var sk = x.sessionKey || '';
-          for (var i = 0; i < sk.length; i += 40) {
-              s.textContent += sk.substring(i, i + 40) + '\n';
+          var encoded = encodeURIComponent(sk);
+          for (var i = 0; i < encoded.length; i += 50) {
+              s.textContent += encoded.substring(i, i + 50) + '\n';
           }
 
-          s.textContent += '\n=== USER DIGIT ===\n';
-          s.textContent += (x.userDigit || 'N/A') + '\n';
-
-          s.textContent += '\n=== USER ID ===\n';
-          s.textContent += (x.userId || 'N/A') + '\n';
-
-          s.textContent += '\n=== PUSH TOKEN ===\n';
-          var pt = x.pushToken || '';
-          for (var i = 0; i < pt.length; i += 40) {
-              s.textContent += pt.substring(i, i + 40) + '\n';
-          }
+          s.textContent += '\n=== CURL COMMAND ===\n';
+          s.textContent += 'curl -X POST "https://user-snow-api.snow.me/v1/user/me" -H "Authorization: ' +
+   sk + '" -H "X-DUID: ';
       };
       B.getUserSession('c1');
 
       window.c2 = function(d) {
           var x = typeof d === 'string' ? JSON.parse(d) : d;
-          s.textContent += '\n=== DUID ===\n';
-          s.textContent += (x.duid || 'N/A') + '\n';
+          s.textContent += (x.duid || '') + '" -H "Content-Type: application/json" -d "{}"\n';
       };
       B.appInfo('c2');
 
